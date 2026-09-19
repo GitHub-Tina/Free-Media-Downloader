@@ -844,20 +844,92 @@ fn open_in_shell(path: String, reveal: bool) -> Result<(), String> {
         }
         return Err("File no longer exists (moved or deleted)".into());
     }
+    open_in_shell_platform(p, reveal)
+}
+
+/// 定位辅助脚本:优先应用目录,其次资源目录(随包分发)
+fn find_helper_script() -> Option<std::path::PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let cand = dir.join("reveal.ps1");
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            // NSIS 安装目录下的 resources/bin
+            if let Some(dir) = exe.parent() {
+                let cand = dir.join("resources").join("bin").join("reveal.ps1");
+                if cand.is_file() {
+                    return Some(cand);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Windows 定位文件:独立 PowerShell 子进程 Explore+SelectItem(实测可靠);
+/// 辅助脚本随安装包分发,缺失时兜底打开所在目录
+#[cfg(windows)]
+fn open_reveal(p: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let helper = find_helper_script();
+    if let Some(script) = helper {
+        let mut c = std::process::Command::new("powershell");
+        c.args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(&script)
+        .arg("-Path")
+        .arg(p);
+        c.creation_flags(0x0800_0000);
+        c.spawn().map_err(|e| format!("打开失败: {e}"))?;
+        return Ok(());
+    }
+    // 兜底:辅助脚本缺失,退化为打开所在目录(保证有响应)
+    let dir = Path::new(p)
+        .parent()
+        .map(|d| d.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut c = std::process::Command::new("explorer.exe");
+    c.arg(if dir.is_empty() { "." } else { &dir });
+    c.creation_flags(0x0800_0000);
+    c.spawn().map_err(|e| format!("打开失败: {e}"))?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn open_reveal(p: &str) -> Result<(), String> {
+    let mut cmd = std::process::Command::new(if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    });
+    cmd.arg("-R");
+    cmd.arg(p);
+    cmd.spawn().map_err(|e| format!("打开失败: {e}"))?;
+    Ok(())
+}
+
+/// 平台分支:reveal 走定位,否则直接打开文件
+fn open_in_shell_platform(p: String, reveal: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let mut cmd = if reveal {
-            let mut c = std::process::Command::new("explorer.exe");
-            c.arg(format!("/select,\"{}\"", p));
-            c
-        } else {
-            let mut c = std::process::Command::new("cmd");
-            c.args(["/C", "start", "", &p]);
-            c
-        };
-        cmd.creation_flags(0x0800_0000);
-        cmd.spawn().map_err(|e| format!("打开失败: {e}"))?;
+        if reveal {
+            return open_reveal(&p);
+        }
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &p]);
+        c.creation_flags(0x0800_0000);
+        c.spawn().map_err(|e| format!("打开失败: {e}"))?;
         return Ok(());
     }
     #[cfg(not(windows))]
