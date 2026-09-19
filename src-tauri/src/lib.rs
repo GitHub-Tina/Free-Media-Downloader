@@ -833,6 +833,17 @@ fn open_in_shell(path: String, reveal: bool) -> Result<(), String> {
     if p.is_empty() {
         return Err("路径为空".into());
     }
+    if !Path::new(&p).exists() {
+        // 文件已被移动/删除:回退打开其所在目录,目录也没了则明确报错
+        let parent = Path::new(&p)
+            .parent()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !parent.is_empty() && Path::new(&parent).exists() {
+            return open_in_shell(parent, false);
+        }
+        return Err("File no longer exists (moved or deleted)".into());
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
