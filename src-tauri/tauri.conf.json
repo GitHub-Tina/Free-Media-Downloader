@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "媒体下载器",
+  "productName": "Free Media Downloader",
   "version": "2.4.1",
   "identifier": "com.freemedia.downloader",
   "build": {

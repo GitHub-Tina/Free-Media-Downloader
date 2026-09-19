@@ -43,6 +43,12 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Verify mac universal targets
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target list --installed | grep -q aarch64-apple-darwin
+          rustup target list --installed | grep -q x86_64-apple-darwin
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -51,14 +57,26 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Compute release tag
+        id: rel
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "name=Free Media Downloader ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(date +%Y.%m.%d)-manual" >> "$GITHUB_OUTPUT"
+            echo "name=Free Media Downloader (manual build $(date +%Y.%m.%d))" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: .
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: ${{ github.ref_type == 'tag' && format('媒体下载器 v{0}', github.ref_name) || '' }}
-          releaseBody: "见 assets 下载安装包。"
+          tagName: ${{ steps.rel.outputs.tag }}
+          releaseName: ${{ steps.rel.outputs.name }}
+          releaseBody: "Download the installer for your platform from the assets below. Usage notice: for content you own or are licensed to use only."
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
