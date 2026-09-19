@@ -1,0 +1,64 @@
+# 双平台构建:GitHub Actions 云端出包(含 macOS)
+#
+# 用法一:手动触发 —— GitHub 仓库 → Actions → Build → Run workflow
+# 用法二:打 tag 推送自动构建并发布 Release:
+#   git tag v2.4.1 && git push origin v2.4.1
+#
+# 产物(Actions 页面底部 Artifacts / Release 附件):
+#   Windows: media-downloader-2.4.1-setup.exe (NSIS) / .msi
+#   macOS:   Media Downloader.app.tar.gz / .dmg (universal: Intel + Apple Silicon)
+#
+# 注:测试构建不含签名;上架需另行配置证书(Apple Developer ID / Windows 签名)。
+
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # arm64 runner;下方以 universal 覆盖双架构
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: .
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && format('媒体下载器 v{0}', github.ref_name) || '' }}
+          releaseBody: "见 assets 下载安装包。"
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

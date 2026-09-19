@@ -1,0 +1,19 @@
+{
+  "productName": "媒体下载器 Store",
+  "identifier": "com.freemedia.downloader.store",
+  "app": {
+    "windows": [
+      {
+        "title": "媒体下载器 Store",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "decorations": false,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 16, "y": 20 }
+      }
+    ]
+  }
+}
